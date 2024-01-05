@@ -10,7 +10,7 @@ import warnings
 from scipy.signal import stft
 from scipy.interpolate import interp2d
 
-from ava.models.vae import Xfill_value_SHAPE
+from ava.models.vae import X_SHAPE
 
 
 EPSILON = 1e-12
