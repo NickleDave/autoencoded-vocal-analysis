@@ -9,14 +9,32 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 
-from ava.segmenting.utils import get_spec, softmax
+from ava.segmenting.utils import get_spec
+from ava.segmenting.utils import softmax as apply_softmax
 
 
 EPSILON = 1e-9
 
 
 
-def get_onsets_offsets(audio, p, return_traces=False):
+def get_onsets_offsets(
+		audio,
+		min_freq: float = 30e3,
+		max_freq: float = 110e3,
+		nperseg: int = 1024, # FFT
+		noverlap: int = 512, # FFT
+		spec_min_val: float = 2.0, # minimum log-spectrogram value
+		spec_max_val: float = 6.0, # maximum log-spectrogram value
+		fs: int = 250000, # audio samplerate
+		th_1: float = 0.1, # segmenting threshold 1
+		th_2: float = 0.2, # segmenting threshold 2
+		th_3: float = 0.3, # segmenting threshold 2
+		max_dur: float = 0.2, # maximum syllable duration
+		min_dur: float = 0.03, # minimum syllable duration
+		smoothing_timescale: float = 0.007, # timescale for smoothing amplitude trace
+		softmax: bool = True, # puts amplitude values in [0,1]
+		temperature: float = 0.5, # temperature parameter for softmax
+		return_traces=False):
 	"""
 	Segment the spectrogram using thresholds on its amplitude.
 
@@ -54,18 +72,17 @@ def get_onsets_offsets(audio, p, return_traces=False):
 			return [], [], None
 		return [], []
 	spec, dt, _ = get_spec(audio, p)
-	min_syll_len = int(np.floor(p['min_dur'] / dt))
-	max_syll_len = int(np.ceil(p['max_dur'] / dt))
-	th_1, th_2, th_3 = p['th_1'], p['th_2'], p['th_3'] # tresholds
+	min_syll_len = int(np.floor(min_dur / dt))
+	max_syll_len = int(np.ceil(max_dur / dt))
 	onsets, offsets = [], []
 	too_short, too_long = 0, 0
 
 	# Calculate amplitude and smooth.
-	if p['softmax']:
-		amps = softmax(spec, t=p['temperature'])
+	if softmax:
+		amps = apply_softmax(spec, t=temperature)
 	else:
 		amps = np.sum(spec, axis=0)
-	amps = gaussian_filter(amps, p['smoothing_timescale']/dt)
+	amps = gaussian_filter(amps, smoothing_timescale / dt)
 
 	# Find local maxima greater than th_3.
 	local_maxima = []
