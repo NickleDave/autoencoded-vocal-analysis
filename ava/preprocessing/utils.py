@@ -10,13 +10,33 @@ import warnings
 from scipy.signal import stft
 from scipy.interpolate import interp2d
 
+from ava.models.vae import Xfill_value_SHAPE
+
 
 EPSILON = 1e-12
 
 
-
-def get_spec(t1, t2, audio, p, fs=32000, target_freqs=None, target_times=None, \
-	fill_value=-1/EPSILON, max_dur=None, remove_dc_offset=True):
+def get_spec(
+		t1,
+		t2,
+		audio,
+		num_freq_bins: int = X_SHAPE[0],
+		num_time_bins: int = X_SHAPE[1],
+		nperseg: int = 1024,
+		noverlap: int = 512,
+		min_freq: float = 30e3,
+		max_freq: float = 110e3,
+		spec_min_val: float = 2.0,
+		spec_max_val: float = 6.0,
+		fs=32000,
+		target_freqs=None,
+		target_times=None,
+		mel: bool = False,
+		time_stretch: bool = True,
+		fill_value= -1 / EPSILON,
+		max_dur: float = 0.2,
+		remove_dc_offset=True
+	):
 	"""
 	Norm, scale, threshold, stretch, and resize a Short Time Fourier Transform.
 
@@ -56,8 +76,6 @@ def get_spec(t1, t2, audio, p, fs=32000, target_freqs=None, target_times=None, \
 	flag : bool
 		``True``
 	"""
-	if max_dur is None:
-		max_dur = p['max_dur']
 	if t2 - t1 > max_dur + 1e-4:
 		message = "Found segment longer than max_dur: " + str(t2-t1) + \
 				"s, max_dur = " + str(max_dur) + "s"
@@ -67,46 +85,39 @@ def get_spec(t1, t2, audio, p, fs=32000, target_freqs=None, target_times=None, \
 			" t2: " + str(t2)
 	# Get a spectrogram and define the interpolation object.
 	temp = min(len(audio),s2) - max(0,s1)
-	if temp < p['nperseg'] or s2 <= 0 or s1 >= len(audio):
-		return np.zeros((p['num_freq_bins'], p['num_time_bins'])), True
+	if temp < nperseg or s2 <= 0 or s1 >= len(audio):
+		return np.zeros((num_freq_bins, num_time_bins)), True
 	else:
 		temp_audio = audio[max(0,s1):min(len(audio),s2)]
 		if remove_dc_offset:
 			temp_audio = temp_audio - np.mean(temp_audio)
-		f, t, spec = stft(temp_audio, fs=fs, nperseg=p['nperseg'], \
-				noverlap=p['noverlap'])
+		f, t, spec = stft(temp_audio, fs=fs, nperseg=nperseg,
+				noverlap=noverlap)
 	t += max(0,t1)
 	spec = np.log(np.abs(spec) + EPSILON)
-	interp = interp2d(t, f, spec, copy=False, bounds_error=False, \
-		fill_value=fill_value)
+	interp = interp2d(t, f, spec, copy=False, bounds_error=False, fill_value=fill_value)
 	# Define target frequencies.
 	if target_freqs is None:
-		if p['mel']:
-			target_freqs = np.linspace(_mel(p['min_freq']), \
-					_mel(p['max_freq']), p['num_freq_bins'])
+		if mel:
+			target_freqs = np.linspace(_mel(min_freq), _mel(max_freq), num_freq_bins)
 			target_freqs = _inv_mel(target_freqs)
 		else:
-			target_freqs = np.linspace(p['min_freq'], p['max_freq'], \
+			target_freqs = np.linspace(min_freq, max_freq, \
 					p['num_freq_bins'])
 	# Define target times.
 	if target_times is None:
 		duration = t2 - t1
-		if p['time_stretch']:
+		if time_stretch:
 			duration = np.sqrt(duration * max_dur) # stretched duration
 		shoulder = 0.5 * (max_dur - duration)
-		target_times = np.linspace(t1-shoulder, t2+shoulder, p['num_time_bins'])
+		target_times = np.linspace(t1-shoulder, t2+shoulder, num_time_bins)
 	# Then interpolate.
 	interp_spec = interp(target_times, target_freqs, assume_sorted=True)
 	spec = interp_spec
 	# Normalize.
-	spec -= p['spec_min_val']
-	spec /= (p['spec_max_val'] - p['spec_min_val'])
+	spec -= spec_min_val
+	spec /= (spec_max_val - spec_min_val)
 	spec = np.clip(spec, 0.0, 1.0)
-	# Within-syllable normalize.
-	if p['within_syll_normalize']:
-		spec -= np.quantile(spec, p['normalize_quantile'])
-		spec[spec<0.0] = 0.0
-		spec /= np.max(spec) + EPSILON
 	return spec, True
 
 
