@@ -15,13 +15,32 @@ from scipy.io.wavfile import WavFileWarning
 import warnings
 
 from ava.preprocessing.utils import _mel, _inv_mel
+from ava.models.vae import X_SHAPE
+from ava.segmenting.utils import get_spec
 
 EPSILON = 1e-12
 
 
-
-def process_sylls(audio_dir, segment_dir, save_dir, p, shuffle=True, \
-	verbose=True):
+def process_sylls(
+		audio_dir,
+		segment_dir,
+		save_dir,
+		max_dur: float = 0.2,
+		min_freq: float = 30e3,
+		max_freq: float = 110e3,
+		num_freq_bins: int = X_SHAPE[0],
+		num_time_bins: int = X_SHAPE[1],
+		nperseg: int = 1024,
+		noverlap: int = 512,
+		spec_min_val: float = 2.0,
+		spec_max_val: float = 6.0,
+		fs: int = 250000,
+		mel: bool = False,
+		time_stretch: bool = True,
+		max_num_syllables: bool = None,
+		sylls_per_file: int = 20,
+		shuffle=True,
+		verbose=True):
 	"""
 	Extract syllables from `audio_dir` and save to `save_dir`.
 
@@ -63,9 +82,24 @@ def process_sylls(audio_dir, segment_dir, save_dir, p, shuffle=True, \
 	# For each pair of files...
 	for audio_filename, seg_filename in zip(audio_filenames, seg_filenames):
 		# Get onsets and offsets.
-		onsets, offsets = read_onsets_offsets_from_file(seg_filename, p)
+		onsets, offsets = read_onsets_offsets_from_file(seg_filename)
 		# Retrieve a spectrogram for each detected syllable.
-		specs, good_sylls = get_syll_specs(onsets, offsets, audio_filename, p)
+		specs, good_sylls = get_syll_specs(
+			onsets,
+			offsets,
+			audio_filename,
+			num_freq_bins,
+			num_time_bins,
+			min_freq,
+			max_freq,
+			spec_min_val,
+			spec_max_val,
+			nperseg,
+			noverlap,
+			mel,
+			time_stretch,
+			max_dur=max_dur,
+		)
 		onsets = [onsets[i] for i in good_sylls]
 		offsets = [offsets[i] for i in good_sylls]
 		# Add the syllables to <syll_data>.
@@ -95,17 +129,32 @@ def process_sylls(audio_dir, segment_dir, save_dir, p, shuffle=True, \
 			for key in syll_data:
 				syll_data[key] = syll_data[key][sylls_per_file:]
 			# Stop if we've written `max_num_syllables`.
-			if p['max_num_syllables'] is not None and \
-					write_file_num*sylls_per_file >= p['max_num_syllables']:
+			if max_num_syllables is not None and \
+					write_file_num*sylls_per_file >= max_num_syllables:
 				if verbose:
 					print("\tSaved max_num_syllables (" + \
-							str(p['max_num_syllables'])+"). Returning.")
+							str(max_num_syllables)+"). Returning.")
 				return
 	if verbose:
 		print("\tDone.")
 
 
-def get_syll_specs(onsets, offsets, audio_filename, p):
+def get_syll_specs(
+		onsets,
+		offsets,
+		audio_filename,
+		num_freq_bins: int = X_SHAPE[0],
+		num_time_bins: int = X_SHAPE[1],
+		min_freq: float = 30e3,
+		max_freq: float = 110e3,
+		spec_min_val: float = 2.0,
+		spec_max_val: float = 6.0,
+		nperseg: int = 1024,
+		noverlap: int = 512,
+		mel: bool = False,
+		time_stretch: bool = True,
+		max_dur: float = 0.2,
+	):
 	"""
 	Return the spectrograms corresponding to `onsets` and `offsets`.
 
@@ -131,19 +180,33 @@ def get_syll_specs(onsets, offsets, audio_filename, p):
 	with warnings.catch_warnings():
 		warnings.filterwarnings("ignore", category=WavFileWarning)
 		fs, audio = wavfile.read(audio_filename)
-	assert p['nperseg'] % 2 == 0 and p['nperseg'] > 2
-	if p['mel']:
-		target_freqs = np.linspace( \
-				_mel(p['min_freq']), _mel(p['max_freq']), p['num_freq_bins'])
+	assert nperseg % 2 == 0 and nperseg > 2
+	if mel:
+		target_freqs = np.linspace(
+				_mel(min_freq), _mel(max_freq), num_freq_bins
+				)
 		target_freqs = _inv_mel(target_freqs)
 	else:
-		target_freqs = np.linspace( \
-				p['min_freq'], p['max_freq'], p['num_freq_bins'])
+		target_freqs = np.linspace(
+				min_freq, max_freq, num_freq_bins)
 	specs, valid_syllables = [], []
 	# For each syllable...
 	for i, t1, t2 in zip(range(len(onsets)), onsets, offsets):
-		spec, valid = p['get_spec'](t1, t2, audio, p, fs, \
-				target_freqs=target_freqs)
+		spec, valid = get_spec(
+			t1,
+			t2,
+			audio,
+			num_freq_bins,
+			num_time_bins,
+			nperseg,
+			noverlap,
+			min_freq,
+			max_freq,
+			spec_min_val,
+			spec_max_val,
+			fs,
+			target_freqs=target_freqs
+			)
 		if valid:
 			valid_syllables.append(i)
 			specs.append(spec)
@@ -333,7 +396,7 @@ def get_audio_filenames(audio_dir):
 	return fns
 
 
-def read_onsets_offsets_from_file(txt_filename, p):
+def read_onsets_offsets_from_file(txt_filename):
 	"""
 	Read a text file to collect onsets and offsets.
 
