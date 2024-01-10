@@ -103,14 +103,14 @@ def get_spec(
 			target_freqs = _inv_mel(target_freqs)
 		else:
 			target_freqs = np.linspace(min_freq, max_freq, \
-					p['num_freq_bins'])
+					num_freq_bins)
 	# Define target times.
 	if target_times is None:
 		duration = t2 - t1
 		if time_stretch:
 			duration = np.sqrt(duration * max_dur) # stretched duration
 		shoulder = 0.5 * (max_dur - duration)
-		target_times = np.linspace(t1-shoulder, t2+shoulder, num_time_bins)
+		target_times = np.linspace(t1 - shoulder, t2 + shoulder, num_time_bins)
 	# Then interpolate.
 	interp_spec = interp(target_times, target_freqs, assume_sorted=True)
 	spec = interp_spec
