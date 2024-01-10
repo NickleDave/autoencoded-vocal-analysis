@@ -34,7 +34,6 @@ def process_sylls(
 		noverlap: int = 512,
 		spec_min_val: float = 2.0,
 		spec_max_val: float = 6.0,
-		fs: int = 250000,
 		mel: bool = False,
 		time_stretch: bool = True,
 		max_num_syllables: bool = None,
