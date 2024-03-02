@@ -79,8 +79,8 @@ params = {
 	},
 }
 
-root = '/path/to/directory/'
-audio_dirs = [os.path.join(root, 'audio')]
+root = '/home/pimienta/Documents/data/vocal/goffinet'
+audio_dirs = [os.path.join(root, 'BM003')]
 seg_dirs = [os.path.join(root, 'segs')]
 proj_dirs = [os.path.join(root, 'projections')]
 spec_dirs = [os.path.join(root, 'specs')]
